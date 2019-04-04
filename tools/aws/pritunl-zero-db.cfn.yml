@@ -1,19 +1,35 @@
 ---
 AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
 Description: Pritunl - Enterprise Distributed VPN Server
 Parameters:
   Service:
     Type: String
-    Default: 'Pritnul'
+    Default: 'Pritnulzero'
     Description: Service name for this product
-  PritunlDomain:
+  PritunlZeroDomainHostedZoneId:
+     Type: AWS::Route53::HostedZone::Id
+     Description: This is the pre-exisitng domain to use, you also give access to edit this domain for the PritunlZeroDomain if PritunlZeroDomainAutoUpdate is true
+  PritunlZeroDomain:
     Type: String
-    Description: This is the domain that pritunl can control for letsencrypt dns and also to add new servers to
-  SSMKey:
+    Description: This is the domain that pritunl-zero admin be located at
+  PritunlZeroDomainAutoUpdate:
     Type: String
-    Description: KMS key for alias/aws/ssm
+    Default: "true"
+    AllowedValues :
+       - "true"
+       - "false"
+    Description: If true, it will auto create a lambda function to update the domain name
+  PritunlZeroDomainAsgNotification:
+    Type: String
+    Description: "Used to notify external lambda to update domain of asg ec2 instance list. note: this set  or PritunlZeroDomainAutoUpdate:false"
+#uncomment if you want ssm decription functionality
+#  SSMKey:
+#    Type: String
+#    Description: KMS key for alias/aws/ssm
   KeyName:
-    Type: AWS::EC2::KeyPair::KeyName
+    Type: String #Type: AWS::EC2::KeyPair::KeyName since session manager means you don't need ssh keys anymore
+    Default: ''
     Description: Name of an existing EC2 KeyPair to enable SSH access
     ConstraintDescription: Must be the name of an existing EC2 KeyPair
   StackSize:
@@ -29,10 +45,28 @@ Parameters:
     - t2.micro
     - t2.small
     - t2.medium
+    - t2.large
+    - t3.micro
+    - t2.large
+    - t2.xlarge
+    - t2.2xlarge
+    - t3.small
+    - t3.medium
+    - t3.large
+    - t3.xlarge
+    - t3.2xlarge
     - m3.medium
     - m3.large
     - m3.xlarge
     - m3.2xlarge
+    - m4.large
+    - m4.xlarge
+    - m4.2xlarge
+    - m4.4xlarge
+    - m5.large
+    - m5.xlarge
+    - m5.2xlarge
+    - m5.4xlarge
     - c3.large
     - c3.xlarge
     - c3.2xlarge
@@ -43,12 +77,28 @@ Parameters:
     - c4.2xlarge
     - c4.4xlarge
     - c4.8xlarge
+    - c5.large
+    - c5.xlarge
+    - c5.2xlarge
+    - c5.4xlarge
     - r3.large
     - r3.xlarge
     - r3.2xlarge
     - r3.4xlarge
     - r3.8xlarge
+    - r4.large
+    - r4.xlarge
+    - r4.2xlarge
+    - r4.4xlarge
+    - r4.8xlarge
     ConstraintDescription: Must be a valid EC2 instance type
+  DatabaseEnabled:
+    Type: String
+    Description: If false, database instance is not stood up and MongoDBDomain is used instead
+    Default: "true"
+    AllowedValues :
+       - "true"
+       - "false"
   DatabaseInstanceType:
     Type: String
     Default: m3.medium
@@ -57,10 +107,28 @@ Parameters:
     - t2.micro
     - t2.small
     - t2.medium
+    - t2.large
+    - t3.micro
+    - t2.large
+    - t2.xlarge
+    - t2.2xlarge
+    - t3.small
+    - t3.medium
+    - t3.large
+    - t3.xlarge
+    - t3.2xlarge
     - m3.medium
     - m3.large
     - m3.xlarge
     - m3.2xlarge
+    - m4.large
+    - m4.xlarge
+    - m4.2xlarge
+    - m4.4xlarge
+    - m5.large
+    - m5.xlarge
+    - m5.2xlarge
+    - m5.4xlarge
     - c3.large
     - c3.xlarge
     - c3.2xlarge
@@ -71,12 +139,53 @@ Parameters:
     - c4.2xlarge
     - c4.4xlarge
     - c4.8xlarge
+    - c5.large
+    - c5.xlarge
+    - c5.2xlarge
+    - c5.4xlarge
     - r3.large
     - r3.xlarge
     - r3.2xlarge
     - r3.4xlarge
     - r3.8xlarge
+    - r4.large
+    - r4.xlarge
+    - r4.2xlarge
+    - r4.4xlarge
+    - r4.8xlarge
     ConstraintDescription: Must be a valid EC2 instance type
+  MongoDBDomain:
+    Type: String
+    Default: db.mydomain.com:27017/pritunl
+    Description: MongoDB connection URI for database if DatabaseEnabled is false
+    ConstraintDescription: Must be a valid MongoDB URI
+  DatabaseAuthEnabled:
+    Type: String
+    Default: "false"
+    Description: mongodb is setup without auth, once manually set #then update ssm location and update the template on this value
+    AllowedValues :
+       - "true"
+       - "false"
+  DatabaseUsername:
+    Type : "String" #'AWS::SSM::Parameter::Value<String>'
+    Description: DatabaseAuthEnabled if set tell pritunl the database username #set ssm location /config/Pritnul/databaseUsername
+    Default: "pritunl" #"/config/pritunl/databaseUsername"
+  DatabasePassword:
+    Type : "String" #'AWS::SSM::Parameter::Value<String>'
+    Description: DatabaseAuthEnabled if set tell pritunl the database password #set ssm location /config/Pritnul/databasePassword
+    Default: "" #"/config/Pritnul/databasePassword"
+    NoEcho: true
+  DatabaseUseSSL:
+    Type : "String" #'AWS::SSM::Parameter::Value<String>'
+    Description: DatabaseAuthEnabled if set tell pritunl the database requires #ssl set ssm location /config/Pritnul/databaseUseSSL
+    Default: "false" #"/config/Pritnul/databaseUseSSL"
+    AllowedValues :
+       - "true"
+       - "false"
+  DatabaseAuthSource:
+    Type : String
+    Default: admin
+    Description: DatabaseAuthEnabled if set tell pritunl which auth source of the mongo db table
   VpcId:
     Type: AWS::EC2::VPC::Id
     Description: VPC Id of existsing VPC
@@ -91,111 +200,189 @@ Parameters:
     ConstraintDescription: Must be a list of existing subnets in VPC
   PublicIpEnabled:
     Type: String
-    Description: true or false for enabling public ip for instances
-    Default: 'false'
+    Description: true or false for enabling public ip for instances (ensure nat gateway is attached if false)
+    Default: 'true'
+    AllowedValues :
+       - "true"
+       - "false"
   DatabasePublicIpEnabled:
     Type: String
-    Description: true or false for enabling public ip for database
-    Default: 'false'
+    Description: true or false for enabling public ip for database (ensure nat gateway is attached if false)
+    Default: 'true'
+    AllowedValues :
+       - "true"
+       - "false"
   AdminPort:
     Type: Number
     Description: what port is the admin system running on
-    Default: 8443
+    Default: 443
   AdminCidrRange:
     Type: String
+    Description: cidr range to lock down admin mangement
     Default : "0.0.0.0/0"
-    Description: what ip's should be able to connect to the admin port
+  VPNUdpMinRange:
+    Type: String
+    Default: '10000'
+  VPNUdpMaxRange:
+    Type: String
+    Default: '19999'
+  VPNUdpCidrRange:
+    Type: String
+    Default: "0.0.0.0/0"
+  VPNTcpMinRange:
+     Type: String
+     Default: '8443'
+  VPNTcpMaxRange:
+     Type: String
+     Default: '8443'
+  VPNTcpCidrRange:
+    Type: String
+    Default: "0.0.0.0/0"  #change to internal ip range to disable tcp
+  NLBEnabled:
+    Type: String
+    Description: network load balancer for use with other domains
+    Default: 'true'
+    AllowedValues :
+       - "true"
+       - "false"
+
 Mappings:
   AWSInstanceType2Arch:
     t2.micro:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     t2.small:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     t2.medium:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     m3.medium:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     m3.large:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     m3.xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     m3.2xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c3.large:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c3.xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c3.2xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c3.4xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c3.8xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c4.large:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c4.xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c4.2xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c4.4xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     c4.8xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     r3.large:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     r3.xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     r3.2xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     r3.4xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
     r3.8xlarge:
-      Arch: HVM64
+      Arch: amzn2x64gp2
   AWSRegionArch2AMI:
-    us-east-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-02cc5b6cf82d354da
-      HVMG2: NOT_SUPPORTED
-    us-west-2:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-0b5913cdbba67598e
-      HVMG2: NOT_SUPPORTED
+    AMI:
+        #amzn2: "https://aws.amazon.com/amazon-linux-2/release-notes/" #amzn2-ami-hvm-2.0.20190313 to make regex (ami-.*) (am.*)  to \2: "\1"
+        amzn2x64ebs: "magnetic root drive"
+        amzn2x64gp2: "ssd root drive Default"
+        #amzn2arm64gp2: #arm cpu with ssd root drive, not all regions have this
     us-west-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-0c3ca2c6f4edb5546
-      HVMG2: NOT_SUPPORTED
-    eu-west-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-06e710681e5ee07aa
-      HVMG2: NOT_SUPPORTED
+        amzn2x64ebs: "ami-0f9d113ee458b4f6e"
+        amzn2x64gp2: "ami-0019ef04ac50be30f"
     eu-central-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-0f0debf49705e047c
-      HVMG2: NOT_SUPPORTED
-    ap-southeast-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-00cbdef8d2acf44a7
-      HVMG2: NOT_SUPPORTED
-    ap-northeast-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-016ad6443b4a3d960
-      HVMG2: NOT_SUPPORTED
-    ap-southeast-2:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-0fbfb4926256a1f1e
-      HVMG2: NOT_SUPPORTED
-    sa-east-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-088018633b4291710
-      HVMG2: NOT_SUPPORTED
+        amzn2x64ebs: "ami-08782e1cd8f682ceb"
+        amzn2x64gp2: "ami-09def150731bdbcc2"
     cn-north-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-0273771427032a4e6
-      HVMG2: NOT_SUPPORTED
+        amzn2x64ebs: "ami-0a1ab0955075cd354"
+        amzn2x64gp2: "ami-0cad3dea07a7c36f9"
+    us-east-1:
+        amzn2x64ebs: "ami-02013ed1a71752ea7"
+        amzn2x64gp2: "ami-0de53d8956e8dcf80"
+        #amzn2arm64gp2: "ami-06b382aba6c5a4f2c"
+    ap-northeast-2:
+        amzn2x64ebs: "ami-0e1a0346bf9f3b831"
+        amzn2x64gp2: "ami-047f7b46bd6dd5d84"
     us-gov-west-1:
-      PV64: NOT_SUPPORTED
-      HVM64: ami-e5dbbf84
-      HVMG2: NOT_SUPPORTED
+        amzn2x64ebs: "ami-8b1e74ea"
+        amzn2x64gp2: "ami-6b157f0a"
+    sa-east-1:
+        amzn2x64ebs: "ami-0a7a2e3acb791c6dc"
+        amzn2x64gp2: "ami-0669a96e355eac82f"
+    ap-northeast-3:
+        amzn2x64ebs: "ami-09b2bced4c085a04a"
+        amzn2x64gp2: "ami-088d713d672ed235e"
+    ap-northeast-1:
+        amzn2x64ebs: "ami-0930347fabaa9cd9c"
+        amzn2x64gp2: "ami-0f9ae750e8274075b"
+    ap-southeast-1:
+        amzn2x64ebs: "ami-0ba62a20f78ef85c8"
+        amzn2x64gp2: "ami-0b419c3a4b01d1859"
+    us-east-2:
+        amzn2x64ebs: "ami-0ee8324901ba9164d"
+        amzn2x64gp2: "ami-02bcbb802e03574ba"
+        #amzn2arm64gp2: "ami-06a134062219ad132"
+    ap-southeast-2:
+        amzn2x64ebs: "ami-065d66d47fcd4dfc2"
+        amzn2x64gp2: "ami-04481c741a0311bbb"
+    cn-northwest-1:
+        amzn2x64ebs: "ami-0ab53e43fa638914b"
+        amzn2x64gp2: "ami-094b7433620966eb5"
+    eu-west-1:
+        amzn2x64ebs: "ami-06a376457af6d8e1c"
+        amzn2x64gp2: "ami-07683a44e80cd32c5"
+        #amzn2arm64gp2: "ami-07140bc02c30028bb"
+    eu-north-1:
+        amzn2x64ebs: "ami-6462eb1a"
+        amzn2x64gp2: "ami-d16fe6af"
+    us-gov-east-1:
+        amzn2x64ebs: "ami-7e15f30f"
+        amzn2x64gp2: "ami-1208ee63"
+    ap-south-1:
+        amzn2x64ebs: "ami-0295b1ab1c6e6f31c"
+        amzn2x64gp2: "ami-0889b8a448de4fc44"
+    eu-west-3:
+        amzn2x64ebs: "ami-080530ec9712e5948"
+        amzn2x64gp2: "ami-0451ae4fd8dd178f7"
+    eu-west-2:
+        amzn2x64ebs: "ami-0dbd5595b1b1bdab4"
+        amzn2x64gp2: "ami-09ead922c1dad67e4"
+    ca-central-1:
+        amzn2x64ebs: "ami-0e8e4723a6ac8bb0f"
+        amzn2x64gp2: "ami-03338e1f67dae0168"
+    us-west-2:
+        amzn2x64ebs: "ami-08e689a423405d7f6"
+        amzn2x64gp2: "ami-061392db613a6357b"
+        #amzn2arm64gp2: "ami-062ce7f8c1e7ffd3c"
+Conditions:
+  hasKeyName:
+    !Not [ !Equals [ !Ref KeyName , '']]
+  hasDatabaseEnabled:
+    !Equals [ !Ref DatabaseEnabled, 'true' ]
+  hasDatabaseAuthEnabled:
+    !Equals [ !Ref DatabaseAuthEnabled, 'true' ]
+  hasPritunlZeroDomainAutoUpdate:
+    !Equals [ !Ref PritunlZeroDomainAutoUpdate, 'true' ]
+  NoAsgNotify:
+    !And [ !Equals [ !Ref PritunlZeroDomainAutoUpdate, 'false' ],  !Equals [ !Ref PritunlZeroDomainAsgNotification, '' ]]
+  AsgNotify:
+    !Or [ !Equals [ !Ref PritunlZeroDomainAutoUpdate, 'true' ],  !Not [ !Equals [ !Ref PritunlZeroDomainAsgNotification, '' ]]]
+  IsNLBEnabled:
+    !Equals [ !Ref NLBEnabled, 'true' ]
+  NoNLBEnabled:
+    !Equals [ !Ref NLBEnabled, 'false' ]
+
 Resources:
   PritunlInstanceRole:
     Type: AWS::IAM::Role
@@ -209,22 +396,12 @@ Resources:
           Action: sts:AssumeRole
       ManagedPolicyArns:
       - arn:aws:iam::aws:policy/AWSElasticBeanstalkWebTier
+      - arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM
       Policies:
       - PolicyName: Pritunl-CustomPolicy
         PolicyDocument:
           Version: '2012-10-17'
           Statement:
-          - Effect: Allow
-            Action:
-            - route53:ListHostedZones
-            - route53:GetChange
-            Resource:
-            - "*"
-          - Effect: Allow
-            Action:
-            - route53:ChangeResourceRecordSets
-            Resource:
-            - !Sub "arn:aws:route53:::hostedzone/${HostedZone}"
           - Effect: Allow
             Action:
             - logs:CreateLogGroup
@@ -254,11 +431,12 @@ Resources:
             - !Sub "arn:aws:ssm:*:*:parameter/config/${Service}/*"
             - !Sub "arn:aws:ssm:*:*:parameter/config/${Service}_*"
             - !Sub "arn:aws:ssm:*:*:parameter/config/${Service}_*/*"
-          - Effect: Allow
-            Action:
-            - kms:Decrypt
-            Resource:
-            - Ref: SSMKey
+#uncomment if you want ssm decription functionality
+#          - Effect: Allow
+#            Action:
+#            - kms:Decrypt
+#            Resource:
+#            - Ref: SSMKey
           - Effect: Allow
             Action:
             - ssm:UpdateInstanceInformation
@@ -275,14 +453,27 @@ Resources:
             Action:
             - kms:GenerateDataKey
             Resource: '*'
+          - Effect: Allow
+            Action:
+            - route53:ListHostedZones
+            - route53:ListHostedZonesByName
+            - route53:GetChange
+            Resource:
+            - "*"
+          - Effect: Allow
+            Action:
+            - route53:ChangeResourceRecordSets
+            Resource:
+            - !Sub "arn:aws:route53:::hostedzone/${PritunlZeroDomainHostedZoneId}"
   Ec2InstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
       Path: "/"
       Roles:
       - Ref: PritunlInstanceRole
-      
+
   DatabaseInstance:
+    Condition: hasDatabaseEnabled
     Type: AWS::EC2::Instance
     Metadata:
       AWS::CloudFormation::Init:
@@ -305,13 +496,13 @@ Resources:
               command: yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
               ignoreErrors: true
             01-verify-running:
-              command: status amazon-ssm-agent
+              command: systemctl status amazon-ssm-agent
               ignoreErrors: true
             02-start-anyway:
-              command: start amazon-ssm-agent
+              command: systemctl start amazon-ssm-agent
               ignoreErrors: true
         AWSLogs:
-          files:
+          files: #before we install awslogs as we cfn-init files can't overide existing files
             "/etc/awslogs/awslogs.conf":
               content: |
                 [general]
@@ -326,37 +517,37 @@ Resources:
                   log_group_name=/aws/${AWS::StackName}/var/log/cfn-init.log
                   log_stream_name={instance_id}
                   file=/var/log/cfn-init.log
-                  
+
                   [cloud-init-output.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/cloud-init-output.log
                   log_stream_name={instance_id}
-                  file=/var/log/cloud-init-output.log   
-                                 
+                  file=/var/log/cloud-init-output.log
+
                   [cloud-init.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/cloud-init.log
                   log_stream_name={instance_id}
                   file=/var/log/cloud-init.log
-                  
+
                   [/var/log/mongodb/mongod.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/mongodb/mongod.log
                   log_stream_name={instance_id}
                   file=/var/log/mongodb/mongod.log*
-                  
+
               mode: '000644'
               owner: root
               group: root
-          commands:
-            01_set_region:
-              command: !Sub "sed -i 's/us-east-1/${AWS::Region}/g'  /etc/awslogs/awscli.conf"
+        AWSLogsPart2:
           packages:
             yum:
               awslogs: []
-        AWSLogsPart2:
           commands:
+            01_set_region:
+              command: !Sub "sed -i 's/us-east-1/${AWS::Region}/g'  /etc/awslogs/awscli.conf"
             01_start_awslogs:
-              command: service awslogs start
+              command: systemctl restart awslogsd
+              ignoreErrors: true #if we run this script a second time it won't fail
             01_start_awslogs_onreboot:
-              command: chkconfig awslogs on
+              command: systemctl enable awslogsd.service
         Setup:
           files:
             "/etc/yum.repos.d/mongodb-org-3.0.repo":
@@ -371,7 +562,6 @@ Resources:
               mode: '000644'
               owner: root
               group: root
-
         Install:
           packages:
             yum:
@@ -381,10 +571,9 @@ Resources:
             01_conf_mongodb:
               command: "sed -i 's/bindIp: 127.0.0.1/bindIp: 0.0.0.0/g' /etc/mongod.conf"
             02_start_mongodb:
-              command: service mongod start
+              command: systemctl restart mongod
             02_start_onreboot:
-              command: chkconfig mongod on
-              
+              command: systemctl enable mongod
     Properties:
       ImageId:
         Fn::FindInMap:
@@ -397,7 +586,10 @@ Resources:
       InstanceType:
         Ref: InstanceType
       KeyName:
-        Ref: KeyName
+        Fn::If:
+          - hasKeyName
+          - Ref: KeyName
+          - Ref: AWS::NoValue
       IamInstanceProfile:
         Ref: Ec2InstanceProfile
       NetworkInterfaces:
@@ -429,6 +621,7 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Timeout: PT5M
+
   PritunlScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -451,6 +644,27 @@ Resources:
             - "${StackName}-instance"
             - StackName: !Ref AWS::StackName
           PropagateAtLaunch: true
+        -
+          Key: DomainMeta
+          Value: !Sub "${PritunlZeroDomainHostedZoneId}:${PritunlZeroDomain}"
+          PropagateAtLaunch: false
+      NotificationConfigurations:
+        Fn::If:
+          - NoAsgNotify
+          - !Ref AWS::NoValue
+          - -  TopicARN: !If [ hasPritunlZeroDomainAutoUpdate, !Ref ASGtoRoute53UpdateSNSTopic, !Ref PritunlZeroDomainAsgNotification ]
+               NotificationTypes:
+               - autoscaling:EC2_INSTANCE_LAUNCH
+               - autoscaling:EC2_INSTANCE_LAUNCH_ERROR
+               - autoscaling:EC2_INSTANCE_TERMINATE
+               - autoscaling:EC2_INSTANCE_TERMINATE_ERROR
+      TargetGroupARNs:
+        Fn::If:
+          - NoNLBEnabled
+          - !Ref AWS::NoValue
+          - - !Ref publicNLBTargetGroup80
+            - !Ref publicNLBTargetGroup443
+
   PritunlLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
     Metadata:
@@ -460,6 +674,8 @@ Resources:
           - Update
           - SSM
           - AWSLogs
+          - AWSLogsPart2
+          - CfnHup
           - Setup
           - Install
           - Configure
@@ -473,10 +689,10 @@ Resources:
               command: yum install -y https://s3.amazonaws.com/ec2-downloads-windows/SSMAgent/latest/linux_amd64/amazon-ssm-agent.rpm
               ignoreErrors: true
             01-verify-running:
-              command: status amazon-ssm-agent
+              command: systemctl status amazon-ssm-agent
               ignoreErrors: true
             02-start-anyway:
-              command: start amazon-ssm-agent
+              command: systemctl start amazon-ssm-agent
               ignoreErrors: true
         AWSLogs:
           files:
@@ -494,37 +710,67 @@ Resources:
                   log_group_name=/aws/${AWS::StackName}/var/log/cfn-init.log
                   log_stream_name={instance_id}
                   file=/var/log/cfn-init.log
-                  
+
                   [cloud-init-output.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/cloud-init-output.log
                   log_stream_name={instance_id}
-                  file=/var/log/cloud-init-output.log   
-                                 
+                  file=/var/log/cloud-init-output.log
+
                   [cloud-init.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/cloud-init.log
                   log_stream_name={instance_id}
                   file=/var/log/cloud-init.log
-                  
+
                   [/var/log/pritunl.log]
                   log_group_name=/aws/${AWS::StackName}/var/log/pritunl-zero.log
                   log_stream_name={instance_id}
                   file=/var/log/pritunl.log*
-                  
+
               mode: '000644'
               owner: root
               group: root
-          commands:
-            01_set_region:
-              command: !Sub "sed -i 's/us-east-1/${AWS::Region}/g'  /etc/awslogs/awscli.conf"
+        AWSLogsPart2:
           packages:
             yum:
               awslogs: []
-        AWSLogsPart2:
           commands:
-            01_start_awslogs:
-              command: service awslogs restart
-            01_start_awslogs_onreboot:
-              command: chkconfig awslogs on
+            01_set_region:
+              command: !Sub "sed -i 's/us-east-1/${AWS::Region}/g'  /etc/awslogs/awscli.conf"
+            02_start_awslogs:
+              command: systemctl restart awslogsd
+              ignoreErrors: true
+            03_start_awslogs_onreboot:
+              command: systemctl enable awslogsd.service
+        CfnHup: #allows cloudformation to update the instances post creation.
+          files:
+            "/etc/cfn/cfn-hup.conf":
+              content:
+                !Sub |
+                  [main]
+                  stack=${AWS::StackId}
+                  region=${AWS::Region}
+              mode: '000400'
+              owner: root
+              group: root
+            "/etc/cfn/hooks.d/cfn-auto-reloader.conf":
+              content:
+                !Sub |
+                  [cfn-auto-reloader-hook]
+                  triggers=post.update
+                  path=Resources.PritunlLaunchConfig.Metadata.AWS::CloudFormation::Init
+                  action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource PritunlLaunchConfig --configsets InstallAndRun --region ${AWS::Region}
+                  runas=root
+              mode: '000400'
+              owner: root
+              group: root
+          services:
+            sysvinit:
+              cfn-hup:
+                enabled: 'true'
+                ensureRunning: 'true'
+                files:
+                - "/etc/cfn/cfn-hup.conf"
+                - "/etc/cfn/hooks.d/cfn-auto-reloader.conf"
         Setup:
           files:
             "/etc/yum.repos.d/pritunl.repo":
@@ -532,7 +778,7 @@ Resources:
                 !Sub |
                   [pritunl]
                   name=Pritunl Repository
-                  baseurl=https://repo.pritunl.com/stable/yum/centos/7/
+                  baseurl=https://repo.pritunl.com/stable/yum/amazonlinux/2/
                   gpgcheck=1
                   enabled=1
               mode: '000644'
@@ -550,38 +796,44 @@ Resources:
         Install:
           packages:
             yum:
-              python27: []
               pritunl-zero: []
-          files:
-            "/etc/pritunl-zero.conf":
-              content:
-                !Sub |
-                  {
-                      "bind_addr": "0.0.0.0",
-                      "log_path": "/var/log/pritunl.log",
-                      "temp_path": "/tmp/pritunl_%r",
-                      "local_address_interface": "auto",
-                      "mongodb_uri": "mongodb://${DatabaseInstance.PrivateIp}:27017/pritunl-zero",
-                      "port": "${AdminPort}"
-                  }
-              mode: '000644'
-              owner: root
-              group: root
+              pritunl-ssh-host: []
         Configure:
           commands:
-            01_start_pritunl:
-              command: start pritunl
-            02_set_admin_port:
-              command: !Sub "pritunl-zero set app.server_port ${AdminPort}"
-            03_set_mongodb_port:
-              command: !Sub "sudo pritunl-zero mongo "mongodb://${DatabaseInstance.PrivateIp}:27017/pritunl-zero"
-            04_route53_setup
-              command: pritunl-ssh-host config aws-access-key AWS_ACCESS_KEY
-            04b_route53_setup
-              command: pritunl-ssh-host config aws-secret-key AWS_SECRET_KEY
-            04c_route53_setup
-              command: !Sub "sudo pritunl-ssh-host config route-53-zone ${PritunlZeroDomain}"
-              
+            00_set_mongodb:
+              command:
+                 Fn::If:
+                   - hasDatabaseEnabled
+                   - Fn::If:
+                     - hasDatabaseAuthEnabled
+                     - !Sub "sudo pritunl-zero mongo \"mongodb://${DatabaseUsername}:${DatabasePassword}@${DatabaseInstance.PrivateIp}:27017/pritunl-zero?authSource=${DatabaseAuthSource}&ssl=${DatabaseUseSSL}\" "
+                     - !Sub "sudo pritunl-zero mongo \"mongodb://${DatabaseInstance.PrivateIp}:27017/pritunl-zero\" "
+                   - Fn::If:
+                     - hasDatabaseAuthEnabled
+                     - !Sub "sudo pritunl-zero mongo \"mongodb://${DatabaseUsername}:${DatabasePassword}@${MongoDBDomain}?authSource=${DatabaseAuthSource}&ssl=${DatabaseUseSSL}\" "
+                     - !Sub "sudo pritunl-zero mongo \"mongodb://${MongoDBDomain}\" "
+            02_start_pritunl_zero:
+              command: systemctl restart pritunl-zero
+              ignoreErrors: true
+            #03_set_admin_port:
+            #  command: !Sub "pritunl-zero set app.server_port ${AdminPort}"
+            #  ignoreErrors: true
+            #04_limit_increase:
+            #  command: "echo \"* hard nofile 100000\" >> /etc/security/limits.conf; echo \"* soft nofile 100000\" >> /etc/security/limits.conf; echo \"root hard nofile 100000\" >> /etc/security/limits.conf; echo \"root soft nofile 100000\" >> /etc/security/limits.conf "
+            #04b_limit_increase:
+            #  command: "pritunl-zero set router read_timeout 3600"
+            #04c_limit_increase:
+            #  command: "pritunl-zero set router write_timeout 3600"
+            05_pritunl_ssh_host_setup:
+              command: "pritunl-ssh-host config aws-access-key role"
+            05b_pritunl_ssh_host_setup:
+              command: "pritunl-ssh-host config aws-secret-key role"
+            05c_pritunl_ssh_host_route53_setup:
+              command: !Sub "pritunl-ssh-host config route-53-zone ${PritunlZeroDomainHostedZoneId}"
+            05d_pritunl_ssh_host_hostname_setup:
+              command: !Sub "pritunl-ssh-host config hostname ${PritunlZeroDomain}"
+
+
     Properties:
       ImageId:
         Fn::FindInMap:
@@ -594,10 +846,13 @@ Resources:
       InstanceType:
         Ref: InstanceType
       SecurityGroups:
-      - Ref: PritunlSecurityGroup
+      - Ref: PritunlZeroSecurityGroup
       AssociatePublicIpAddress: !Ref PublicIpEnabled
       KeyName:
-        Ref: KeyName
+        Fn::If:
+          - hasKeyName
+          - Ref: KeyName
+          - Ref: AWS::NoValue
       IamInstanceProfile:
         Ref: Ec2InstanceProfile
       UserData:
@@ -612,6 +867,7 @@ Resources:
     CreationPolicy:
       ResourceSignal:
         Timeout: PT5M
+
   DatabaseSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -623,8 +879,8 @@ Resources:
         FromPort: '27017'
         ToPort: '27017'
         SourceSecurityGroupId:
-          Ref: PritunlSecurityGroup
-  PritunlSecurityGroup:
+          Ref: PritunlZeroSecurityGroup
+  PritunlZeroSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Pritunl Security Group
@@ -636,25 +892,180 @@ Resources:
         ToPort: '80'
         CidrIp: 0.0.0.0/0
       - IpProtocol: tcp
-        FromPort: '443'
-        ToPort: '443'
-        CidrIp: 0.0.0.0/0
+        FromPort: !Ref VPNTcpMinRange
+        ToPort: !Ref VPNTcpMaxRange
+        CidrIp: !Ref VPNTcpCidrRange
       - IpProtocol: tcp
         FromPort: !Ref AdminPort
         ToPort: !Ref AdminPort
         CidrIp: !Ref AdminCidrRange
-  HostedZone:
-    Type: AWS::Route53::HostedZone
+      - IpProtocol: udp
+        FromPort: !Ref VPNUdpMinRange
+        ToPort: !Ref VPNUdpMaxRange
+        CidrIp: !Ref VPNUdpCidrRange
+
+  ASGtoRoute53UpdateSNSTopic:
+    Condition: hasPritunlZeroDomainAutoUpdate
+    Type: AWS::SNS::Topic
     Properties:
-      Name: !Sub "${PritunlZeroDomain}"
-      HostedZoneConfig:
-        Comment: !Sub "HostedZone resources for the ${AWS::StackName} to control"
-      HostedZoneTags: 
-        - 
-          Key: "Service"
-          Value: !Ref Service
+      DisplayName: ASGtoRoute53Update
+
+  LambdaASGtoRoute53Update:
+    Condition: hasPritunlZeroDomainAutoUpdate
+    Type: 'AWS::Serverless::Function'
+    DependsOn:
+      - LambdaASGtoRoute53UpdateRole
+    Properties:
+      #FunctionName: LambdaASGtoRoute53Update
+      InlineCode: |
+        var AWS=require("aws-sdk"),nextTick=function(e){"function"==typeof setImmediate?setImmediate(e):"undefined"!=typeof process&&process.nextTick?process.nextTick(e):setTimeout(e,0)},makeIterator=function(e){var n=function(o){var t=function(){return e.length&&e[o].apply(null,arguments),t.next()};return t.next=function(){return o<e.length-1?n(o+1):null},t};return n(0)},_isArray=Array.isArray||function(e){return"[object Array]"===Object.prototype.toString.call(e)},waterfall=function(e,n){if(n=n||function(){},!_isArray(e)){var o=new Error("First argument to waterfall must be an array of functions");return n(o)}if(!e.length)return n();var t=function(e){return function(o){if(o)n.apply(null,arguments),n=function(){};else{var r=Array.prototype.slice.call(arguments,1),s=e.next();s?r.push(t(s)):r.push(n),nextTick(function(){e.apply(null,r)})}}};t(makeIterator(e))()};
+        exports.handler=function(e,n){console.log(e);var o=JSON.parse(e.Records[0].Sns.Message),t=o.AutoScalingGroupName,r=(o.EC2InstanceId,o.Event);if(console.log(r),"autoscaling:EC2_INSTANCE_LAUNCH"===r||"autoscaling:EC2_INSTANCE_TERMINATE"===r){console.log("Handling Launch/Terminate Event for "+t);var s=process.env.AWS_DEFAULT_REGION;console.log(s);var a=new AWS.AutoScaling({region:s}),c=new AWS.EC2({region:s}),l=new AWS.Route53;
+        waterfall([function(e){console.log("Describing ASG Tags"),a.describeTags({Filters:[{Name:"auto-scaling-group",Values:[t]},{Name:"key",Values:["DomainMeta"]}],MaxRecords:1},e)},
+        function(e,n){console.log("Processing ASG Tags"),console.log(e.Tags),0==e.Tags.length&&n("ASG: "+t+" does not define Route53 DomainMeta tag.");var o=e.Tags[0].Value.split(":"),r={HostedZoneId:o[0],RecordName:o[1]};console.log(r),n(null,r)},
+        function(e,n){console.log("Retrieving Instances in ASG"),a.describeAutoScalingGroups({AutoScalingGroupNames:[t],MaxRecords:1},function(o,t){n(o,e,t)})},
+        function(e,n,o){console.log(n.AutoScalingGroups[0]);var t=n.AutoScalingGroups[0].Instances.map(function(e){return e.InstanceId});c.describeInstances({DryRun:!1,InstanceIds:t},
+        function(n,t){o(n,e,t)})},function(e,n,o){console.log(n.Reservations);var t=n.Reservations.map(function(e){return{Value:e.Instances[0].NetworkInterfaces[0].Association.PublicIp}});console.log(t),l.changeResourceRecordSets({ChangeBatch:{Changes:[{Action:"UPSERT",ResourceRecordSet:{Name:e.RecordName,Type:"A",TTL:10,ResourceRecords:t}}]},HostedZoneId:e.HostedZoneId},o)}],
+        function(e){e?console.error("Failed to process DNS updates for ASG event: ",e):console.log("Successfully processed DNS updates for ASG event."),n.done(e)})}else console.log("Unsupported ASG event: "+t,r),n.done("Unsupported ASG event: "+t,r)};
+      Description: !Sub 'Asg to Route53 record domain update'
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt LambdaASGtoRoute53UpdateRole.Arn
+      Runtime: nodejs8.10
+      Timeout: 20
+      Events:
+        SNS1:
+          Type: SNS
+          Properties:
+            Topic:
+              Ref: ASGtoRoute53UpdateSNSTopic
+
+  # Has either AsgToRoute53EditPolicy attached for route53 edit rights
+  LambdaASGtoRoute53UpdateRole:
+    Condition: hasPritunlZeroDomainAutoUpdate
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: [lambda.amazonaws.com]
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AmazonEC2ReadOnlyAccess
+
+  AsgToRoute53EditPolicy:
+    Condition: hasPritunlZeroDomainAutoUpdate
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "AsgToRoute53EditPolicy"
+      Roles:
+        -
+          !Ref LambdaASGtoRoute53UpdateRole
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+        - Effect: Allow
+          Action:
+          - route53:ListHostedZones
+          - route53:GetChange
+          Resource:
+          - "*"
+        - Effect: Allow
+          Action:
+          - route53:ChangeResourceRecordSets
+          Resource:
+            - !Sub "arn:aws:route53:::hostedzone/${PritunlZeroDomainHostedZoneId}"
+
+  publicNLB:
+    Condition: IsNLBEnabled
+    Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
+    Properties:
+      Type: network
+      Name: !Sub
+        - ${StackName}-nlb
+        -
+          StackName: !Ref AWS::StackName
+      Scheme: internet-facing
+      Subnets: !Ref VpcSubnets
+      Tags:
+        -
+          Key: Name
+          Value: !Sub
+            - ${StackName}-nlb
+            - StackName: !Ref AWS::StackName
+
+  NLBListener80:
+    Condition: IsNLBEnabled
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        -
+          Type: forward
+          TargetGroupArn: !Ref publicNLBTargetGroup80
+      LoadBalancerArn: !Ref publicNLB
+      Port: 80
+      Protocol: TCP
+  NLBListener443:
+    Condition: IsNLBEnabled
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        -
+          Type: forward
+          TargetGroupArn: !Ref publicNLBTargetGroup443
+      LoadBalancerArn: !Ref publicNLB
+      Port: 443
+      Protocol: TCP
+
+  publicNLBTargetGroup80:
+    Condition: IsNLBEnabled
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      #HealthCheckPath: /
+      HealthCheckProtocol: TCP
+      # HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      #Matcher:
+      #  HttpCode: 200-399
+      Name: !Sub
+        - ${StackName}-80-tg
+        - StackName: !Ref AWS::StackName
+      Port: 80
+      Protocol: TCP
+      Tags:
+        -
+          Key: Name
+          Value: alb-tg
+      VpcId: !Ref VpcId
+  publicNLBTargetGroup443:
+    Condition: IsNLBEnabled
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 10
+      #HealthCheckPath: /
+      HealthCheckProtocol: TCP
+      # HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      #Matcher:
+      #  HttpCode: 200-399
+      Name: !Sub
+        - ${StackName}-443-tg
+        - StackName: !Ref AWS::StackName
+      Port: 443
+      Protocol: TCP
+      Tags:
+        -
+          Key: Name
+          Value: alb-tg
+      VpcId: !Ref VpcId
 
 Outputs:
-  ZoneID:
-    Value: !Ref HostedZone
-    Description: Route53 hosted zone ID please add the name servers connected to this to your TLD
+  publicNLB:
+    Value: !Ref publicNLB
+    Description: publicNLB to use with hosted sites
