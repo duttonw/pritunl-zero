@@ -194,6 +194,10 @@ Parameters:
     Type: AWS::EC2::Subnet::Id
     Description: The SubnetId in your VPC to launch MongoDB instance
     ConstraintDescription: Must be an existing subnet in VPC
+  NLBVpcSubnets:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: The list of SubnetIds in your VPC to attach the NLB to (set to VpcSubnets if same)
+    ConstraintDescription: Must be a list of existing subnets in VPC
   VpcSubnets:
     Type: List<AWS::EC2::Subnet::Id>
     Description: The list of SubnetIds in your VPC to launch Pritunl instances
@@ -832,7 +836,8 @@ Resources:
               command: !Sub "pritunl-ssh-host config route-53-zone ${PritunlZeroDomainHostedZoneId}"
             05d_pritunl_ssh_host_hostname_setup:
               command: !Sub "pritunl-ssh-host config hostname ${PritunlZeroDomain}"
-
+            06_pritunl_zero_reboot:
+              command: "systemctl enable pritunl-zero"
 
     Properties:
       ImageId:
@@ -979,17 +984,17 @@ Resources:
           Resource:
             - !Sub "arn:aws:route53:::hostedzone/${PritunlZeroDomainHostedZoneId}"
 
-  publicNLB:
+  PublicNLB:
     Condition: IsNLBEnabled
     Type: "AWS::ElasticLoadBalancingV2::LoadBalancer"
     Properties:
       Type: network
       Name: !Sub
-        - ${StackName}-nlb
+        - ${StackName}-Pnlb
         -
           StackName: !Ref AWS::StackName
       Scheme: internet-facing
-      Subnets: !Ref VpcSubnets
+      Subnets: !Ref NLBVpcSubnets
       Tags:
         -
           Key: Name
@@ -1005,7 +1010,7 @@ Resources:
         -
           Type: forward
           TargetGroupArn: !Ref publicNLBTargetGroup80
-      LoadBalancerArn: !Ref publicNLB
+      LoadBalancerArn: !Ref PublicNLB
       Port: 80
       Protocol: TCP
   NLBListener443:
@@ -1016,7 +1021,7 @@ Resources:
         -
           Type: forward
           TargetGroupArn: !Ref publicNLBTargetGroup443
-      LoadBalancerArn: !Ref publicNLB
+      LoadBalancerArn: !Ref PublicNLB
       Port: 443
       Protocol: TCP
 
@@ -1033,7 +1038,7 @@ Resources:
       #Matcher:
       #  HttpCode: 200-399
       Name: !Sub
-        - ${StackName}-80-tg
+        - ${StackName}-P80-tg
         - StackName: !Ref AWS::StackName
       Port: 80
       Protocol: TCP
@@ -1055,7 +1060,7 @@ Resources:
       #Matcher:
       #  HttpCode: 200-399
       Name: !Sub
-        - ${StackName}-443-tg
+        - ${StackName}-P443-tg
         - StackName: !Ref AWS::StackName
       Port: 443
       Protocol: TCP
@@ -1066,6 +1071,6 @@ Resources:
       VpcId: !Ref VpcId
 
 Outputs:
-  publicNLB:
-    Value: !Ref publicNLB
-    Description: publicNLB to use with hosted sites
+  PublicNLB:
+    Value: !Ref PublicNLB
+    Description: PublicNLB to use with hosted sites
