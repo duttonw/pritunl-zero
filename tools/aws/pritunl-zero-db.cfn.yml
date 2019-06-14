@@ -249,7 +249,25 @@ Parameters:
     AllowedValues :
        - "true"
        - "false"
-
+  TcpForwardGitSSH:
+    Type: String
+    Description: enable netcat to forward git+ssh traffic
+    Default: 'false'
+    AllowedValues :
+       - "true"
+       - "false"
+  TcpForwardGitSSHPort:
+     Type: Number
+     Description: GitSSH Port if TcpForwardGitSSH is true
+     Default: 7999
+  TcpForwardGitSSHServer:
+     Type: String
+     Description: GitSSH Server ip or domainname if TcpForwardGitSSH is true
+     Default: ""
+  NodeId:
+     Type: String
+     Description: set default nodeid key so that autoscaling does not re-gen new pritunl zero node when repair/replacing the server
+     Default: ""
 Mappings:
   AWSInstanceType2Arch:
     t2.micro:
@@ -386,6 +404,12 @@ Conditions:
     !Equals [ !Ref NLBEnabled, 'true' ]
   NoNLBEnabled:
     !Equals [ !Ref NLBEnabled, 'false' ]
+  NodeIdSet:
+    !Not [ !Equals [ !Ref NodeId, '']]
+  TcpForwardGitSSHEnabled:
+    !Equals [ !Ref TcpForwardGitSSH, 'true' ]
+  IsNLBEnabledAndTcpForwardGitSSHEnabled:
+    !And [!Equals [ !Ref TcpForwardGitSSH, 'true' ], !Equals [ !Ref NLBEnabled, 'true' ]]
 
 Resources:
   PritunlInstanceRole:
@@ -666,8 +690,14 @@ Resources:
         Fn::If:
           - NoNLBEnabled
           - !Ref AWS::NoValue
-          - - !Ref publicNLBTargetGroup80
-            - !Ref publicNLBTargetGroup443
+          - Fn::If:
+            - TcpForwardGitSSHEnabled
+            - - !Ref publicNLBTargetGroup80
+              - !Ref publicNLBTargetGroup443
+              - !Ref publicNLBTargetGroupTcpForwardGitSSH
+            - - !Ref publicNLBTargetGroup80
+              - !Ref publicNLBTargetGroup443
+              - !Ref publicNLBTargetGroup443
 
   PritunlLaunchConfig:
     Type: AWS::AutoScaling::LaunchConfiguration
@@ -677,6 +707,7 @@ Resources:
           InstallAndRun:
           - Update
           - SSM
+          - NetCat
           - AWSLogs
           - AWSLogsPart2
           - CfnHup
@@ -697,6 +728,72 @@ Resources:
               ignoreErrors: true
             02-start-anyway:
               command: systemctl start amazon-ssm-agent
+              ignoreErrors: true
+        NetCat:
+          packages:
+            yum:
+              socat: []
+          files:
+            "/etc/init.d/git-ssh-forward":
+              content:
+                !Sub  |
+                  #!/bin/sh
+                  ### BEGIN INIT INFO
+                  # Provides:          git-ssh-forward
+                  # Required-Start:    $network $remote_fs $syslog
+                  # Required-Stop:     $network $remote_fs $syslog
+                  # Should-Start:      $named
+                  # Should-Stop:       $named
+                  # Default-Start:     2 3 4 5
+                  # Default-Stop:      0 1 6
+                  # Short-Description: git-ssh-forward NetCat-based port forwarding
+                  # Description: git-ssh-forward NetCat-based port forwarding
+                  ### END INIT INFO
+                  start () {
+                    sh -c "socat tcp-listen:${TcpForwardGitSSHPort},reuseaddr,fork tcp:${TcpForwardGitSSHServer}:${TcpForwardGitSSHPort} & echo \$!" > /var/run/git-ssh-forward.pid
+                  }
+                  stop () {
+                    if [ -e /var/run/git-ssh-forward.pid ]; then
+                      head -1 /var/run/git-ssh-forward.pid| xargs kill
+                      rm /var/run/git-ssh-forward.pid
+                    else
+                      echo "git-ssh-forward is not running"
+                      return 1
+                    fi
+                  }
+                  status () {
+                    if [ -e /var/run/git-ssh-forward.pid ]; then
+                      PID=`head -1 /var/run/git-ssh-forward.pid`
+                    fi
+                    if [ "$PID" = "" ]; then
+                      echo "git-ssh-forward is not running"
+                      exit 1
+                    else
+                      echo "git-ssh-forward is running with PID $PID"
+                    fi
+                  }
+                  case $1 in
+                    start)
+                      start
+                    ;;
+                    stop)
+                      stop
+                    ;;
+                    status)
+                      status
+                    ;;
+                    force-reload|restart)
+                      stop && start
+                    ;;
+                  esac
+                  exit 0
+          commands:
+            01-verify-running-forward:
+              command:
+                 Fn::If:
+                   - TcpForwardGitSSHEnabled
+                   - systemctl enable git-ssh-forward &&  service git-ssh-forward start
+                   - systemctl  disable git-ssh-forward &&  service git-ssh-forward stop
               ignoreErrors: true
         AWSLogs:
           files:
@@ -816,6 +913,12 @@ Resources:
                      - hasDatabaseAuthEnabled
                      - !Sub "sudo pritunl-zero mongo \"mongodb://${DatabaseUsername}:${DatabasePassword}@${MongoDBDomain}?authSource=${DatabaseAuthSource}&ssl=${DatabaseUseSSL}\" "
                      - !Sub "sudo pritunl-zero mongo \"mongodb://${MongoDBDomain}\" "
+            00_set_NodeID:
+              command:
+                 Fn::If:
+                   - NodeIdSet
+                   - !Sub "sudo sed -i 's/\"node_id\": \".*\"/\"node_id\": \"${NodeId}\"/g' /etc/pritunl-zero.json"
+                   - !Sub "echo \"no nodeid set not changing /etc/pritunl-zero.json\""
             02_start_pritunl_zero:
               command: systemctl restart pritunl-zero
               ignoreErrors: true
@@ -892,22 +995,44 @@ Resources:
       VpcId:
         Ref: VpcId
       SecurityGroupIngress:
-      - IpProtocol: tcp #this is for letsencrypt
-        FromPort: '80'
-        ToPort: '80'
-        CidrIp: 0.0.0.0/0
-      - IpProtocol: tcp
-        FromPort: !Ref VPNTcpMinRange
-        ToPort: !Ref VPNTcpMaxRange
-        CidrIp: !Ref VPNTcpCidrRange
-      - IpProtocol: tcp
-        FromPort: !Ref AdminPort
-        ToPort: !Ref AdminPort
-        CidrIp: !Ref AdminCidrRange
-      - IpProtocol: udp
-        FromPort: !Ref VPNUdpMinRange
-        ToPort: !Ref VPNUdpMaxRange
-        CidrIp: !Ref VPNUdpCidrRange
+        Fn::If:
+          - TcpForwardGitSSHEnabled
+          - - IpProtocol: tcp #this is for letsencrypt #this is for git forward list
+              FromPort: '80'
+              ToPort: '80'
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: !Ref VPNTcpMinRange
+              ToPort: !Ref VPNTcpMaxRange
+              CidrIp: !Ref VPNTcpCidrRange
+            - IpProtocol: tcp
+              FromPort: !Ref AdminPort
+              ToPort: !Ref AdminPort
+              CidrIp: !Ref AdminCidrRange
+            - IpProtocol: udp
+              FromPort: !Ref VPNUdpMinRange
+              ToPort: !Ref VPNUdpMaxRange
+              CidrIp: !Ref VPNUdpCidrRange
+            - IpProtocol: tcp
+              FromPort: !Ref TcpForwardGitSSHPort
+              ToPort: !Ref TcpForwardGitSSHPort
+              CidrIp: 0.0.0.0/0
+          - - IpProtocol: tcp #this is for letsencrypt #this is for no git forward
+              FromPort: '80'
+              ToPort: '80'
+              CidrIp: 0.0.0.0/0
+            - IpProtocol: tcp
+              FromPort: !Ref VPNTcpMinRange
+              ToPort: !Ref VPNTcpMaxRange
+              CidrIp: !Ref VPNTcpCidrRange
+            - IpProtocol: tcp
+              FromPort: !Ref AdminPort
+              ToPort: !Ref AdminPort
+              CidrIp: !Ref AdminCidrRange
+            - IpProtocol: udp
+              FromPort: !Ref VPNUdpMinRange
+              ToPort: !Ref VPNUdpMaxRange
+              CidrIp: !Ref VPNUdpCidrRange
 
   ASGtoRoute53UpdateSNSTopic:
     Condition: hasPritunlZeroDomainAutoUpdate
@@ -1025,6 +1150,19 @@ Resources:
       Port: 443
       Protocol: TCP
 
+  NLBListenerGitSSH:
+    Condition: IsNLBEnabledAndTcpForwardGitSSHEnabled
+    Type : AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions:
+        -
+          Type: forward
+          TargetGroupArn: !Ref publicNLBTargetGroupTcpForwardGitSSH
+      LoadBalancerArn: !Ref PublicNLB
+      Port: !Ref TcpForwardGitSSHPort
+      Protocol: TCP
+
+
   publicNLBTargetGroup80:
     Condition: IsNLBEnabled
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -1063,6 +1201,25 @@ Resources:
         - ${StackName}-P443-tg
         - StackName: !Ref AWS::StackName
       Port: 443
+      Protocol: TCP
+      Tags:
+        -
+          Key: Name
+          Value: alb-tg
+      VpcId: !Ref VpcId
+
+  publicNLBTargetGroupTcpForwardGitSSH:
+    Condition: IsNLBEnabledAndTcpForwardGitSSHEnabled
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      HealthCheckIntervalSeconds: 30
+      HealthCheckProtocol: TCP
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Name: !Sub
+        - ${StackName}-PGitSSH-tg
+        - StackName: !Ref AWS::StackName
+      Port: !Ref TcpForwardGitSSHPort
       Protocol: TCP
       Tags:
         -
