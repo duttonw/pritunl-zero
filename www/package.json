@@ -34,6 +34,6 @@
     "superagent": "6.1.0",
     "systemjs": "6.8.3",
     "terser-webpack-plugin": "5.1.1",
-    "webpack": "5.36.2"
+    "webpack": "5.76.0"
   }
 }
