@@ -34,7 +34,7 @@
     "react-router-dom": "5.2.0",
     "react-stripe-checkout": "2.6.3",
     "react-transition-group": "4.4.1",
-    "superagent": "6.1.0",
+    "superagent": "7.0.2",
     "systemjs": "6.8.3",
     "terser-webpack-plugin": "5.1.1",
     "webpack": "5.36.2"
