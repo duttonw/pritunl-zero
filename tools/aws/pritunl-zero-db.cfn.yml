@@ -46,15 +46,26 @@ Parameters:
     - t2.small
     - t2.medium
     - t2.large
-    - t3.micro
-    - t2.large
     - t2.xlarge
     - t2.2xlarge
+    - t3.micro
     - t3.small
     - t3.medium
     - t3.large
     - t3.xlarge
     - t3.2xlarge
+    - t3a.micro
+    - t3a.small
+    - t3a.medium
+    - t3a.large
+    - t3a.xlarge
+    - t3a.2xlarge
+    - t4g.micro
+    - t4g.small
+    - t4g.medium
+    - t4g.large
+    - t4g.xlarge
+    - t4g.2xlarge
     - m3.medium
     - m3.large
     - m3.xlarge
@@ -104,55 +115,66 @@ Parameters:
     Default: m3.medium
     Description: MongoDB EC2 instance type
     AllowedValues:
-    - t2.micro
-    - t2.small
-    - t2.medium
-    - t2.large
-    - t3.micro
-    - t2.large
-    - t2.xlarge
-    - t2.2xlarge
-    - t3.small
-    - t3.medium
-    - t3.large
-    - t3.xlarge
-    - t3.2xlarge
-    - m3.medium
-    - m3.large
-    - m3.xlarge
-    - m3.2xlarge
-    - m4.large
-    - m4.xlarge
-    - m4.2xlarge
-    - m4.4xlarge
-    - m5.large
-    - m5.xlarge
-    - m5.2xlarge
-    - m5.4xlarge
-    - c3.large
-    - c3.xlarge
-    - c3.2xlarge
-    - c3.4xlarge
-    - c3.8xlarge
-    - c4.large
-    - c4.xlarge
-    - c4.2xlarge
-    - c4.4xlarge
-    - c4.8xlarge
-    - c5.large
-    - c5.xlarge
-    - c5.2xlarge
-    - c5.4xlarge
-    - r3.large
-    - r3.xlarge
-    - r3.2xlarge
-    - r3.4xlarge
-    - r3.8xlarge
-    - r4.large
-    - r4.xlarge
-    - r4.2xlarge
-    - r4.4xlarge
-    - r4.8xlarge
+      - t2.micro
+      - t2.small
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - t3.micro
+      - t3.small
+      - t3.medium
+      - t3.large
+      - t3.xlarge
+      - t3.2xlarge
+      - t3a.micro
+      - t3a.small
+      - t3a.medium
+      - t3a.large
+      - t3a.xlarge
+      - t3a.2xlarge
+      - t4g.micro
+      - t4g.small
+      - t4g.medium
+      - t4g.large
+      - t4g.xlarge
+      - t4g.2xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+      - m4.xlarge
+      - m4.2xlarge
+      - m4.4xlarge
+      - m5.large
+      - m5.xlarge
+      - m5.2xlarge
+      - m5.4xlarge
+      - c3.large
+      - c3.xlarge
+      - c3.2xlarge
+      - c3.4xlarge
+      - c3.8xlarge
+      - c4.large
+      - c4.xlarge
+      - c4.2xlarge
+      - c4.4xlarge
+      - c4.8xlarge
+      - c5.large
+      - c5.xlarge
+      - c5.2xlarge
+      - c5.4xlarge
+      - r3.large
+      - r3.xlarge
+      - r3.2xlarge
+      - r3.4xlarge
+      - r3.8xlarge
+      - r4.large
+      - r4.xlarge
+      - r4.2xlarge
+      - r4.4xlarge
+      - r4.8xlarge
     ConstraintDescription: Must be a valid EC2 instance type
   MongoDBDomain:
     Type: String
@@ -276,6 +298,32 @@ Mappings:
       Arch: amzn2x64gp2
     t2.medium:
       Arch: amzn2x64gp2
+    t2.large:
+      Arch: amzn2x64gp2
+    t3.micro:
+      Arch: amzn2x64gp2
+    t3.small:
+      Arch: amzn2x64gp2
+    t3.medium:
+      Arch: amzn2x64gp2
+    t3.large:
+      Arch: amzn2x64gp2
+    t3a.micro:
+      Arch: amzn2x64gp2
+    t3a.small:
+      Arch: amzn2x64gp2
+    t3a.medium:
+      Arch: amzn2x64gp2
+    t3a.large:
+      Arch: amzn2x64gp2
+    t4g.micro:
+      Arch: amzn2arm64gp2
+    t4g.small:
+      Arch: amzn2arm64gp2
+    t4g.medium:
+      Arch: amzn2arm64gp2
+    t4g.large:
+      Arch: amzn2arm64gp2
     m3.medium:
       Arch: amzn2x64gp2
     m3.large:
@@ -316,77 +364,18 @@ Mappings:
       Arch: amzn2x64gp2
   AWSRegionArch2AMI:
     AMI:
-        #amzn2: "https://aws.amazon.com/amazon-linux-2/release-notes/" #amzn2-ami-hvm-2.0.20190313 to make regex (ami-.*) (am.*)  to \2: "\1"
-        amzn2x64ebs: "magnetic root drive"
+        #amzn2: "https://aws.amazon.com/amazon-linux-2/release-notes/" #aamzn2-ami-hvm-2.0.20240916.0-x86_64-gp2 to make regex (ami-.*) (am.*)  to \2: "\1"
+        #find at https://ap-southeast-2.console.aws.amazon.com/ec2/home?region=ap-southeast-2#LaunchInstances: and via cli only
+        amzn2arm64gp2: "ssd root drive on arm processor"
         amzn2x64gp2: "ssd root drive Default"
         #amzn2arm64gp2: #arm cpu with ssd root drive, not all regions have this
-    us-west-1:
-        amzn2x64ebs: "ami-0f9d113ee458b4f6e"
-        amzn2x64gp2: "ami-0019ef04ac50be30f"
-    eu-central-1:
-        amzn2x64ebs: "ami-08782e1cd8f682ceb"
-        amzn2x64gp2: "ami-09def150731bdbcc2"
-    cn-north-1:
-        amzn2x64ebs: "ami-0a1ab0955075cd354"
-        amzn2x64gp2: "ami-0cad3dea07a7c36f9"
-    us-east-1:
-        amzn2x64ebs: "ami-02013ed1a71752ea7"
-        amzn2x64gp2: "ami-0de53d8956e8dcf80"
-        #amzn2arm64gp2: "ami-06b382aba6c5a4f2c"
-    ap-northeast-2:
-        amzn2x64ebs: "ami-0e1a0346bf9f3b831"
-        amzn2x64gp2: "ami-047f7b46bd6dd5d84"
-    us-gov-west-1:
-        amzn2x64ebs: "ami-8b1e74ea"
-        amzn2x64gp2: "ami-6b157f0a"
-    sa-east-1:
-        amzn2x64ebs: "ami-0a7a2e3acb791c6dc"
-        amzn2x64gp2: "ami-0669a96e355eac82f"
-    ap-northeast-3:
-        amzn2x64ebs: "ami-09b2bced4c085a04a"
-        amzn2x64gp2: "ami-088d713d672ed235e"
-    ap-northeast-1:
-        amzn2x64ebs: "ami-0930347fabaa9cd9c"
-        amzn2x64gp2: "ami-0f9ae750e8274075b"
-    ap-southeast-1:
-        amzn2x64ebs: "ami-0ba62a20f78ef85c8"
-        amzn2x64gp2: "ami-0b419c3a4b01d1859"
-    us-east-2:
-        amzn2x64ebs: "ami-0ee8324901ba9164d"
-        amzn2x64gp2: "ami-02bcbb802e03574ba"
-        #amzn2arm64gp2: "ami-06a134062219ad132"
+    #NOTE: This has been cut down to only regions that are in use for me, if you want to use other regions you will need to update the mapping.
     ap-southeast-2:
-        amzn2x64ebs: "ami-065d66d47fcd4dfc2"
-        amzn2x64gp2: "ami-04481c741a0311bbb"
-    cn-northwest-1:
-        amzn2x64ebs: "ami-0ab53e43fa638914b"
-        amzn2x64gp2: "ami-094b7433620966eb5"
-    eu-west-1:
-        amzn2x64ebs: "ami-06a376457af6d8e1c"
-        amzn2x64gp2: "ami-07683a44e80cd32c5"
-        #amzn2arm64gp2: "ami-07140bc02c30028bb"
-    eu-north-1:
-        amzn2x64ebs: "ami-6462eb1a"
-        amzn2x64gp2: "ami-d16fe6af"
-    us-gov-east-1:
-        amzn2x64ebs: "ami-7e15f30f"
-        amzn2x64gp2: "ami-1208ee63"
-    ap-south-1:
-        amzn2x64ebs: "ami-0295b1ab1c6e6f31c"
-        amzn2x64gp2: "ami-0889b8a448de4fc44"
-    eu-west-3:
-        amzn2x64ebs: "ami-080530ec9712e5948"
-        amzn2x64gp2: "ami-0451ae4fd8dd178f7"
-    eu-west-2:
-        amzn2x64ebs: "ami-0dbd5595b1b1bdab4"
-        amzn2x64gp2: "ami-09ead922c1dad67e4"
-    ca-central-1:
-        amzn2x64ebs: "ami-0e8e4723a6ac8bb0f"
-        amzn2x64gp2: "ami-03338e1f67dae0168"
-    us-west-2:
-        amzn2x64ebs: "ami-08e689a423405d7f6"
-        amzn2x64gp2: "ami-061392db613a6357b"
-        #amzn2arm64gp2: "ami-062ce7f8c1e7ffd3c"
+      #amzn2-ami-kernel-5.10-hvm-2.0.20240916.0-arm64-gp2 Amazon Linux 2 LTS Arm64 Kernel 5.10 AMI 2.0.20240916.0 arm64 HVM gp2
+      amzn2arm64gp2: ami-0b4f0fbdc6d9e5d10
+      #amzn2-ami-hvm-2.0.20240916.0-x86_64-gp2  Amazon Linux 2 AMI 2.0.20240916.0 x86_64 HVM gp2
+      amzn2x64gp2: ami-0f056678f28c21b7e
+
 Conditions:
   hasKeyName:
     !Not [ !Equals [ !Ref KeyName , '']]
@@ -734,66 +723,27 @@ Resources:
             yum:
               socat: []
           files:
-            "/etc/init.d/git-ssh-forward":
+            "/etc/systemd/system/git-ssh-forward.service":
               content:
                 !Sub  |
-                  #!/bin/sh
-                  ### BEGIN INIT INFO
-                  # Provides:          git-ssh-forward
-                  # Required-Start:    $network $remote_fs $syslog
-                  # Required-Stop:     $network $remote_fs $syslog
-                  # Should-Start:      $named
-                  # Should-Stop:       $named
-                  # Default-Start:     2 3 4 5
-                  # Default-Stop:      0 1 6
-                  # Short-Description: git-ssh-forward NetCat-based port forwarding
-                  # Description: git-ssh-forward NetCat-based port forwarding
-                  ### END INIT INFO
-                  start () {
-                    sh -c "socat tcp-listen:${TcpForwardGitSSHPort},reuseaddr,fork tcp:${TcpForwardGitSSHServer}:${TcpForwardGitSSHPort} & echo \$!" > /var/run/git-ssh-forward.pid
-                  }
-                  stop () {
-                    if [ -e /var/run/git-ssh-forward.pid ]; then
-                      head -1 /var/run/git-ssh-forward.pid| xargs kill
-                      rm /var/run/git-ssh-forward.pid
-                    else
-                      echo "git-ssh-forward is not running"
-                      return 1
-                    fi
-                  }
-                  status () {
-                    if [ -e /var/run/git-ssh-forward.pid ]; then
-                      PID=`head -1 /var/run/git-ssh-forward.pid`
-                    fi
-                    if [ "$PID" = "" ]; then
-                      echo "git-ssh-forward is not running"
-                      exit 1
-                    else
-                      echo "git-ssh-forward is running with PID $PID"
-                    fi
-                  }
-                  case $1 in
-                    start)
-                      start
-                    ;;
-                    stop)
-                      stop
-                    ;;
-                    status)
-                      status
-                    ;;
-                    force-reload|restart)
-                      stop && start
-                    ;;
-                  esac
-                  exit 0
+                  [Unit]
+                  Description=git-ssh-forward NetCat-based port forwarding
+                  After=network.target
+                  
+                  [Service]
+                  Type=simple
+                  ExecStart=/usr/bin/socat tcp-listen:${TcpForwardGitSSHPort},reuseaddr,fork tcp:${TcpForwardGitSSHServer}:${TcpForwardGitSSHPort}
+                  PIDFile=/var/run/git-ssh-forward.pid
+                  
+                  [Install]
+                  WantedBy=multi-user.target
           commands:
             01-verify-running-forward:
               command:
                  Fn::If:
                    - TcpForwardGitSSHEnabled
-                   - systemctl enable git-ssh-forward &&  service git-ssh-forward start
-                   - systemctl  disable git-ssh-forward &&  service git-ssh-forward stop
+                   - systemctl daemon-reload &&  systemctl enable git-ssh-forward.service &&  systemctl start git-ssh-forward.service
+                   - systemctl daemon-reload &&  systemctl disable git-ssh-forward.service &&  systemctl stop git-ssh-forward.service
               ignoreErrors: true
         AWSLogs:
           files:
