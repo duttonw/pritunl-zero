@@ -9,7 +9,7 @@
     "@monaco-editor/react": "4.6.0",
     "@novnc/novnc": "1.4.0",
     "@popperjs/core": "2.11.8",
-    "@types/chart.js": "2.9.41",
+    "@types/chart.js": "4.0.1",
     "@types/ace": "0.0.52",
     "@types/jquery": "3.5.30",
     "@types/node": "18.11.9",
@@ -33,7 +33,7 @@
     "react-markdown": "9.0.1",
     "react-router-dom": "6.23.1",
     "react-transition-group": "4.4.5",
-    "superagent": "9.0.2",
+    "superagent": "10.2.1",
     "systemjs": "6.15.1",
     "terser-webpack-plugin": "5.3.10"
   },
