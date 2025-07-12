@@ -33,7 +33,7 @@
     "react-markdown": "9.0.1",
     "react-router-dom": "6.23.1",
     "react-transition-group": "4.4.5",
-    "superagent": "9.0.2",
+    "superagent": "10.2.2",
     "systemjs": "6.15.1",
     "terser-webpack-plugin": "5.3.10"
   },
