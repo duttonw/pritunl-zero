@@ -38,7 +38,7 @@
     "react-transition-group": "4.4.5",
     "superagent": "9.0.2",
     "systemjs": "6.15.1",
-    "terser-webpack-plugin": "5.3.10"
+    "terser-webpack-plugin": "5.3.16"
   },
   "devDependencies": {
     "@babel/runtime": "7.26.10",
@@ -46,6 +46,6 @@
     "monaco-editor-webpack-plugin": "7.1.0",
     "source-map-loader": "3.0.1",
     "style-loader": "4.0.0",
-    "webpack": "5.76.0"
+    "webpack": "5.105.2"
   }
 }
